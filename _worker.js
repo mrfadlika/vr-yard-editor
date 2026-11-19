@@ -20,8 +20,11 @@ export default {
       });
     }
 
-    // 1. Endpoint Autosave & Load /data/denah.json
+    // 1. Endpoint Autosave & Load /data/denah.json lintas perangkat
     if (url.pathname === '/data/denah.json' || url.pathname.endsWith('/data/denah.json')) {
+      const cacheKey = new Request(url.origin + '/data/denah.json', { method: 'GET' });
+      const cache = caches.default;
+
       if (request.method === 'PUT' || request.method === 'POST') {
         try {
           const body = await request.text();
@@ -32,6 +35,17 @@ export default {
             if (env && env.DENAH_KV) {
               try { await env.DENAH_KV.put('denah.json', body); } catch (e) {}
             }
+
+            // Simpan ke Cloudflare Edge Cache
+            const cacheResp = new Response(body, {
+              status: 200,
+              headers: {
+                'Content-Type': 'application/json; charset=utf-8',
+                'Cache-Control': 'public, max-age=31536000',
+                'Access-Control-Allow-Origin': '*'
+              }
+            });
+            await cache.put(cacheKey, cacheResp);
 
             return new Response(JSON.stringify({ status: 'ok', saved: true }), {
               status: 200,
@@ -50,19 +64,7 @@ export default {
       }
 
       if (request.method === 'GET') {
-        // Prioritas 1: Jika ada live update di session ini
-        if (memoryDenahJson && memoryDenahJson.trim().startsWith('{')) {
-          return new Response(memoryDenahJson, {
-            status: 200,
-            headers: {
-              'Content-Type': 'application/json; charset=utf-8',
-              'Cache-Control': 'no-store, no-cache, must-revalidate',
-              'Access-Control-Allow-Origin': '*'
-            }
-          });
-        }
-
-        // Prioritas 2: Cloudflare KV (jika dikonfigurasi)
+        // Prioritas A: Cloudflare KV (jika dikonfigurasi)
         if (env && env.DENAH_KV) {
           try {
             const kvData = await env.DENAH_KV.get('denah.json');
@@ -79,8 +81,37 @@ export default {
           } catch (e) {}
         }
 
-        // Prioritas 3 (UTAMA): Selalu sajikan file fisik statis /data/denah.json hasil deploy!
-        // Tanpa Edge Cache yang membekukan denah lama. Setiap kali deploy baru, denah baru langsung aktif.
+        // Prioritas B: Cloudflare Edge Cache (Zero-config)
+        try {
+          const cached = await cache.match(cacheKey);
+          if (cached) {
+            const text = await cached.text();
+            if (text && text.trim().startsWith('{')) {
+              return new Response(text, {
+                status: 200,
+                headers: {
+                  'Content-Type': 'application/json; charset=utf-8',
+                  'Cache-Control': 'no-store, no-cache, must-revalidate',
+                  'Access-Control-Allow-Origin': '*'
+                }
+              });
+            }
+          }
+        } catch (e) {}
+
+        // Prioritas C: In-memory isolate
+        if (memoryDenahJson && memoryDenahJson.trim().startsWith('{')) {
+          return new Response(memoryDenahJson, {
+            status: 200,
+            headers: {
+              'Content-Type': 'application/json; charset=utf-8',
+              'Cache-Control': 'no-store, no-cache, must-revalidate',
+              'Access-Control-Allow-Origin': '*'
+            }
+          });
+        }
+
+        // Fallback: File statis /data/denah.json bawaan folder build
         const assetReq = new Request(url.origin + '/data/denah.json', { method: 'GET' });
         return env.ASSETS.fetch(assetReq);
       }
