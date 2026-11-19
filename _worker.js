@@ -25,6 +25,21 @@ export default {
       const cacheKey = new Request(url.origin + '/data/denah.json', { method: 'GET' });
       const cache = caches.default;
 
+      // Fitur Reset/Clear cache ke file bawaan deploy jika parameter ?reset=1 atau ?clear=1 dipanggil
+      if (url.searchParams.has('reset') || url.searchParams.has('clear') || request.method === 'DELETE') {
+        try { await cache.delete(cacheKey); } catch (e) {}
+        memoryDenahJson = null;
+        if (env && env.DENAH_KV) {
+          try { await env.DENAH_KV.delete('denah.json'); } catch (e) {}
+        }
+        if (request.method === 'DELETE') {
+          return new Response(JSON.stringify({ status: 'ok', message: 'Cache cleared' }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+          });
+        }
+      }
+
       if (request.method === 'PUT' || request.method === 'POST') {
         try {
           const body = await request.text();
