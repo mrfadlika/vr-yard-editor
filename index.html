@@ -93,17 +93,15 @@
                 serverText = (serverText || '').trim();
                 if (serverText && serverText.charAt(0) === '{') {
                   var baseline = window.localStorage.getItem('YardEditor_ServerDenahBaseline');
-                  if (!baseline) {
-                    // Pertama kali: simpan baseline server tanpa menghapus autosave yang sudah ada
-                    try { origSetItem.call(window.localStorage, 'YardEditor_ServerDenahBaseline', serverText); } catch (e) { }
-                  } else if (baseline.trim() !== serverText) {
-                    // File fisik /data/denah.json di folder server diubah manual -> gunakan versi baru dari server
+                  if (!baseline || baseline.trim() !== serverText) {
+                    // File fisik /data/denah.json baru atau berubah di server -> langsung gunakan versi server
                     try {
                       origSetItem.call(window.localStorage, 'YardEditor_ServerDenahBaseline', serverText);
                       origSetItem.call(window.localStorage, 'data/denah.json', serverText);
                       origSetItem.call(window.localStorage, 'YardEditorLayout_pre1eagle', serverText);
+                      origSetItem.call(window.localStorage, 'YardEditorLayout', serverText);
                     } catch (e) { }
-                    console.log('[YardEditor] File fisik /data/denah.json berubah di server, memuat versi server terbaru.');
+                    console.log('[YardEditor] File fisik /data/denah.json terbaru dari server diterapkan.');
                     var sBytes = new TextEncoder().encode(serverText);
                     var sResp = new Response(sBytes, {
                       status: 200,
